@@ -29,7 +29,10 @@ class NamenodeServer(rpyc.Service):
 		self.file_table = defaultdict(list)		#absolute path (root directory)
 		self.file_table[self.fs_path] = []
 		print("init",self.file_table)
-		
+	
+	def exposed_display(self):
+		tmp = self.file_table
+		return(self.file_table)	
 	
 	def exposed_mkdir(self,dir):
 		dir_name = dir.split("/")
@@ -62,23 +65,33 @@ class NamenodeServer(rpyc.Service):
 					tmp_s = j + "/"
 					#print("tmp_s",tmp_s)
 				self.file_table[self.fs_path + tmp_s].append(dir_name[i+1])
-				self.file_table[self.fs_path + tmp_s + dir_name[i+1]] = []
+				self.file_table[self.fs_path + tmp_s + dir_name[i+1] + "/"] = []
 		#self.file_table[dir].append('$')
 		print(self.file_table)
 		return "\n	----Created new Directory----"
 	
 	def exposed_rmdir(self,dir):
-		dir_name = os.path.basename(dir)
-		dir = self.fs_path + dir
-		parent = os.path.dirname(dir) + "/"
+		dir_name = dir.split("/")
+		rem_dir = ''
+		string = ''
+		for i in dir_name[:-1]:
+			string = i + "/"
+		if(len(dir_name) > 1):
+			rem_dir = self.fs_path + string + dir_name[-1] + "/"
+		else:
+			rem_dir = self.fs_path + dir_name[0] + "/"
+		print(rem_dir)
+		parent = self.fs_path + string
+			
 		if(self.dir_exists(parent) == False):
 			return "\nParent directory does not exist"
-		elif(dir_name not in self.file_table[parent]):
+		elif(dir_name[-1] not in self.file_table[parent]):
 			return "\n Directory does not exist"
-		if(len(self.file_table[dir]) > 1):
+		if(len(self.file_table[rem_dir]) >= 1):
 			return "Directory not empty"
-		self.file_table[parent].remove(dir_name)
-		del self.file_table[dir]
+		self.file_table[parent].remove(dir_name[-1])
+		del self.file_table[rem_dir]
+		print(self.file_table)
 		return "\n	----Deleted Directory----"
 	def dir_exists(self,file):
 		if(file in self.file_table):

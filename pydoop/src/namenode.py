@@ -6,6 +6,8 @@ from rpyc.utils.server import ThreadedServer
 import math
 import os.path
 import datetime
+import uuid	#generate random ids
+import random
 from collections import defaultdict
 
 
@@ -15,6 +17,10 @@ class NamenodeServer(rpyc.Service):
 	file_table = defaultdict(list)
 	block_size = 0
 	clients = 1
+	metadata = dict()
+	
+	storage = {}
+	
 	def on_connect(self, conn):
 		dt = datetime.datetime.now()
 		
@@ -29,8 +35,13 @@ class NamenodeServer(rpyc.Service):
 		self.file_table = defaultdict(list)		#absolute path (root directory)
 		self.file_table[self.fs_path] = []
 		print("init",self.file_table)
-	
-	def exposed_display(self):
+	def exposed_dnode_conf(self):
+		dconf = [self.path_to_datanodes,self.num_d]
+		return(dconf)
+	def exposed_get_storage(self):
+		return self.storage
+		
+	def exposed_ls(self):
 		tmp = self.file_table
 		return(self.file_table)	
 	
@@ -50,9 +61,9 @@ class NamenodeServer(rpyc.Service):
 		#print(parent)
 		
 		if(self.dir_exists(parent) == False):
-			return "Parent directory does not exist"
+			return "\n	----Parent directory does not exist----"
 		if(self.dir_exists(self.fs_path + dir_name[0] + "/") == True and len(dir_name) == 1):
-			return "Directory already exist"
+			return "\n	----Directory already exist----"
 		if(dir_name[0] not in self.file_table[self.fs_path]):
 			self.file_table[self.fs_path].append(dir_name[0])
 			#print("entry into file table:",self.file_table)
@@ -70,6 +81,10 @@ class NamenodeServer(rpyc.Service):
 		print(self.file_table)
 		return "\n	----Created new Directory----"
 	
+	def exposed_mk(self,dir,files):
+		self.file_table[self.fs_path+dir + "/"].append(files)
+		if(dir in self.file_table):
+			del self.file_table[dir]
 	def exposed_rmdir(self,dir):
 		dir_name = dir.split("/")
 		rem_dir = ''
@@ -84,15 +99,41 @@ class NamenodeServer(rpyc.Service):
 		parent = self.fs_path + string
 			
 		if(self.dir_exists(parent) == False):
-			return "\nParent directory does not exist"
+			return "\n	----Parent directory does not exist----"
 		elif(dir_name[-1] not in self.file_table[parent]):
-			return "\n Directory does not exist"
+			return "\n	----Directory does not exist----"
 		if(len(self.file_table[rem_dir]) >= 1):
-			return "Directory not empty"
+			return "\n	----Directory not empty----"
 		self.file_table[parent].remove(dir_name[-1])
 		del self.file_table[rem_dir]
 		print(self.file_table)
 		return "\n	----Deleted Directory----"
+	
+	def exposed_write(self,source,dest,size):
+		for i in dest[:-1]:
+			string = i + "/"
+		destination_directory = self.fs_path + string
+		if(self.dir_exists(dest) == False):
+			return "\n	----Directory does not exist----"
+		
+		self.file_table[dest].append(source)
+		num_blocks = int(math.ceil(float(size)/self.block_size))
+		blocks = self.alloc_blocks(source,num_blocks)
+		return blocks
+		
+	def exposed_get_block_size(self):
+		return self.block_size
+	
+	def alloc_blocks(self,source,nb):
+		blocks = []
+		for i in range(0,nb):
+			block_uuid = uuid.uuid1()
+			nodes_ids = random.sample(self.storage.keys(),self.rep_f)
+			blocks.append((block_uuid,nodes_ids))
+			
+		return blocks
+	
+			
 	def dir_exists(self,file):
 		if(file in self.file_table):
 			return 1
@@ -132,6 +173,9 @@ if __name__=="__main__":
 	NamenodeServer.dfs_setup_config = config[11]
 	NamenodeServer.file_table = {}
 	
+	for s in range(1,config[4]):
+		NamenodeServer.storage[s]=('localhost',8888)
+		
 	
 	#starting up namenode service
 	t = ThreadedServer(NamenodeServer, port=18812)
